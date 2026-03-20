@@ -9,7 +9,7 @@ from typing import List, Dict
 # インテントの設定
 intents = discord.Intents.default()
 intents.members = True
-intents.message_content = True  # メッセージ内容の取得を許可
+intents.message_content = True
 
 class MyBot(commands.Bot):
     def __init__(self):
@@ -17,29 +17,31 @@ class MyBot(commands.Bot):
         self.reminders: List[Dict] = []
 
     async def setup_hook(self):
-        # スラッシュコマンドの同期（これを行わないとコマンドが表示されません）
         await self.tree.sync()
-        # リマインダーチェックタスクの開始
         self.check_reminders.start()
 
     @tasks.loop(seconds=60)
     async def check_reminders(self):
-        # 日本時間(JST)を取得（UTC+9時間）
+        # ★ここを修正：日本時間を確実に取得
         jst = datetime.timezone(datetime.timedelta(hours=9))
         now = datetime.datetime.now(jst)
         current_time = now.strftime("%H:%M")
         
-        print(f"現在時刻(JST): {current_time}") # ログで確認用
+        # ログに現在時刻を表示（Railwayのログで確認できます）
+        print(f"Checking reminders for JST: {current_time}")
         
         to_remove = []
         for reminder in self.reminders:
             if reminder["time"] == current_time:
                 channel = self.get_channel(reminder["channel_id"])
                 if channel:
-                    user = await self.fetch_user(reminder["user_id"])
-                    await channel.send(f"{user.mention} {reminder['message']}")
-                    # 送信後にリストから削除
-                    to_remove.append(reminder)
+                    try:
+                        user = await self.fetch_user(reminder["user_id"])
+                        await channel.send(f"{user.mention} {reminder['message']}")
+                        print(f"Sent message to {user.display_name}")
+                        to_remove.append(reminder)
+                    except Exception as e:
+                        print(f"Error sending message: {e}")
         
         for r in to_remove:
             self.reminders.remove(r)
@@ -57,7 +59,6 @@ bot = MyBot()
     user="メンションしたいユーザーを選択してください（未指定なら自分）"
 )
 async def remind(interaction: discord.Interaction, time: str, message: str, user: discord.Member = None):
-    # 時刻フォーマットのバリデーション
     try:
         datetime.datetime.strptime(time, "%H:%M")
     except ValueError:
@@ -73,7 +74,13 @@ async def remind(interaction: discord.Interaction, time: str, message: str, user
         "channel_id": interaction.channel_id
     })
     
-    await interaction.response.send_message(f"{time}に{target_user.display_name}さんへ「{message}」とリマインドします！", ephemeral=True)
+    # ★ここも修正：ボットが認識している現在時刻を返信に含める
+    jst = datetime.timezone(datetime.timedelta(hours=9))
+    now = datetime.datetime.now(jst)
+    await interaction.response.send_message(
+        f"了解しました！\n設定時間: {time}\nボットの現在時刻(日本時間): {now.strftime('%H:%M')}\n時間になったら{target_user.display_name}さんへ「{message}」と送ります！", 
+        ephemeral=True
+    )
 
 @bot.event
 async def on_ready():
