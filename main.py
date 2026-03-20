@@ -9,6 +9,7 @@ from typing import List, Dict
 # インテントの設定
 intents = discord.Intents.default()
 intents.members = True
+intents.message_content = True  # メッセージ内容の取得を許可
 
 class MyBot(commands.Bot):
     def __init__(self):
@@ -16,15 +17,19 @@ class MyBot(commands.Bot):
         self.reminders: List[Dict] = []
 
     async def setup_hook(self):
-        # スラッシュコマンドの同期
+        # スラッシュコマンドの同期（これを行わないとコマンドが表示されません）
         await self.tree.sync()
         # リマインダーチェックタスクの開始
         self.check_reminders.start()
 
     @tasks.loop(seconds=60)
     async def check_reminders(self):
-        now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))) # JST
+        # 日本時間(JST)を取得（UTC+9時間）
+        jst = datetime.timezone(datetime.timedelta(hours=9))
+        now = datetime.datetime.now(jst)
         current_time = now.strftime("%H:%M")
+        
+        print(f"現在時刻(JST): {current_time}") # ログで確認用
         
         to_remove = []
         for reminder in self.reminders:
@@ -33,7 +38,7 @@ class MyBot(commands.Bot):
                 if channel:
                     user = await self.fetch_user(reminder["user_id"])
                     await channel.send(f"{user.mention} {reminder['message']}")
-                    # 一度送ったらリストから外す（毎日送る場合はここを調整）
+                    # 送信後にリストから削除
                     to_remove.append(reminder)
         
         for r in to_remove:
